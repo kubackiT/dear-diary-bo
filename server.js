@@ -12,6 +12,8 @@ app.use(
   cors({
     credentials: true,
     origin: [authConfig.CORS_ORIGIN],
+    allowedHeaders: ["Content-Type", "Authorization", "Access-Control-Allow-Methods", "Access-Control-Request-Headers"],
+    enablePreflight: true
   })
 );
 
