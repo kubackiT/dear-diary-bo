@@ -7,18 +7,19 @@ const authConfig = require("./app/config/auth.config");
 const dbConfig = require("./app/config/db.config");
 
 const app = express();
+const corsOptions = {
+  credentials: true,
+  origin: [authConfig.CORS_ORIGIN],
+  methods: 'GET,POST,PUT,DELETE,OPTIONS',
+  allowedHeaders: ["Content-Type", "Authorization"],
+  enablePreflight: true
+}
 
 app.use(
-  cors({
-    credentials: true,
-    origin: "*",
-    methods: 'GET,POST,PUT,DELETE,OPTIONS',
-    allowedHeaders: ["Content-Type", "Authorization", "Access-Control-Allow-Methods", "Access-Control-Request-Headers"],
-    enablePreflight: true
-  })
+  cors(corsOptions)
 );
 
-app.options('*', cors());
+app.options('*', cors(corsOptions));
 
 // parse requests of content-type - application/json
 app.use(express.json());
