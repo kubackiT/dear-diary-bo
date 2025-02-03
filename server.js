@@ -17,6 +17,8 @@ app.use(
   })
 );
 
+app.options('*', cors());
+
 // parse requests of content-type - application/json
 app.use(express.json());
 
