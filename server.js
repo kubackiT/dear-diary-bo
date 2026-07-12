@@ -7,6 +7,8 @@ const authConfig = require("./app/config/auth.config");
 const dbConfig = require("./app/config/db.config");
 
 const app = express();
+app.set("trust proxy", 1);
+
 const corsOptions = {
   credentials: true,
   origin: [authConfig.CORS_ORIGIN],
@@ -43,7 +45,9 @@ app.use(
   cookieSession({
     name: "dear-diary-session",
     keys: [authConfig.COOKIE_SECRET], // should use as secret environment variable
-    httpOnly: true
+    httpOnly: true,
+    secure: authConfig.COOKIE_SECURE,
+    sameSite: authConfig.COOKIE_SAME_SITE || (authConfig.COOKIE_SECURE ? "none" : "lax")
   })
 );
 
