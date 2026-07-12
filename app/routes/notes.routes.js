@@ -1,4 +1,3 @@
-const { authJwt } = require("../middlewares");
 const controller = require("../controllers/notes.controller");
 
 module.exports = function(app) {

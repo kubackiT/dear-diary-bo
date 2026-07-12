@@ -73,6 +73,9 @@ app.get("/", (req, res) => {
 require("./app/routes/auth.routes")(app);
 require("./app/routes/user.routes")(app);
 require("./app/routes/notes.routes")(app);
+require("./app/routes/trainingData.routes")(app);
+require("./app/routes/trainModel.routes")(app);
+require("./app/routes/research.routes")(app);
 
 // set port, listen for requests
 const PORT = authConfig.PORT || 8080;
