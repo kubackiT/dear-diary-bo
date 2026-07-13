@@ -305,7 +305,10 @@ burstLengths
 
 ```text
 score
+finalScore
+decision
 isMatch
+tensorflowScore
 tensorflowError
 tensorflowThreshold
 statisticalScore
@@ -510,11 +513,48 @@ statisticalMatch
 distance
 ```
 
-## 9. Panel admina
+## 9. Wynik końcowy weryfikacji
+
+Aplikacja zapisuje trzy poziomy wyniku:
+
+```text
+statisticalScore - wynik profilu statystycznego
+tensorflowScore - wynik autoenkodera TensorFlow
+score / finalScore - wynik końcowy
+```
+
+Wynik TensorFlow jest liczony jako płynna miara podobieństwa na podstawie błędu rekonstrukcji:
+
+```text
+effectiveThreshold = max(reconstructionThreshold, 0.75)
+tensorflowScore = exp(-reconstructionError / effectiveThreshold)
+```
+
+Dzięki temu model TensorFlow nie obcina wyniku od razu do 0% po przekroczeniu bardzo niskiego progu rekonstrukcji. Jest to istotne zwłaszcza przy mniejszej liczbie próbek treningowych, gdy autoenkoder może być zbyt rygorystyczny.
+
+Wynik końcowy jest liczony jako kombinacja obu metod:
+
+```text
+finalScore = 0.65 * statisticalScore + 0.35 * tensorflowScore
+```
+
+Takie podejście pozwala zachować TensorFlow jako element klasyfikacji, ale ogranicza sytuację, w której zbyt rygorystyczny model neuronowy całkowicie zeruje wynik mimo rozsądnego dopasowania statystycznego.
+
+Na podstawie `finalScore` wyznaczana jest decyzja:
+
+```text
+finalScore >= 70%      -> match
+finalScore 50-69%      -> uncertain
+finalScore < 50%       -> mismatch
+```
+
+Progi te są progami roboczymi.
+
+## 10. Panel admina
 
 Panel admina umożliwia kontrolę nad procesem badawczym.
 
-### 9.1. Mode
+### 10.1. Mode
 
 ```text
 Enrollment
@@ -525,43 +565,43 @@ Verification
 
 `Verification` oznacza testowanie gotowego profilu.
 
-### 9.2. Profile updates enabled
+### 10.2. Profile updates enabled
 
 Określa, czy profil może być aktualizowany nowymi próbkami enrollment.
 
-### 9.3. Profile frozen
+### 10.3. Profile frozen
 
 Globalna flaga zamrożenia profilu. Pomaga utrzymać rozdział między etapem treningu i testowania.
 
-### 9.4. Minimum enrollment samples
+### 10.4. Minimum enrollment samples
 
 Minimalna liczba próbek wymagana do trenowania profilu.
 
-### 9.5. Enrollment key threshold
+### 10.5. Enrollment key threshold
 
 Liczba naciśnięć klawiszy potrzebna do utworzenia jednej próbki enrollment.
 
-### 9.6. Verification key threshold
+### 10.6. Verification key threshold
 
 Liczba naciśnięć klawiszy wymagana, zanim system zacznie liczyć score verification.
 
-### 9.7. Verification refresh step
+### 10.7. Verification refresh step
 
 Co ile kolejnych naciśnięć klawiszy score verification jest przeliczany.
 
-### 9.8. Long pause threshold ms
+### 10.8. Long pause threshold ms
 
 Próg rozdzielający zwykłe przejście między klawiszami od długiej pauzy.
 
-### 9.9. Max digraph features
+### 10.9. Max digraph features
 
 Liczba najczęstszych digrafów używana jako cechy modelu.
 
-### 9.10. Selected user
+### 10.10. Selected user
 
 Pozwala wybrać użytkownika, którego statystyki i wyniki są wyświetlane.
 
-### 9.11. Current verification actor
+### 10.11. Current verification actor
 
 Pozwala oznaczyć, kto aktualnie pisze próbki verification dla wybranego profilu:
 
@@ -572,11 +612,11 @@ Impostor
 
 To ustawienie jest zapisywane przy nowych próbkach verification jako `actorType`.
 
-### 9.12. Freeze selected profile
+### 10.12. Freeze selected profile
 
 Zamraża profil wybranego użytkownika i przełącza aplikację w tryb verification. Od tego momentu nowe próbki nie powinny douczać profilu, tylko służyć do jego testowania.
 
-## 10. Sugerowany przebieg badania
+## 11. Sugerowany przebieg badania
 
 1. Utworzyć konto testowe użytkownika.
 2. Ustawić tryb `Enrollment`.
@@ -589,12 +629,13 @@ Zamraża profil wybranego użytkownika i przełącza aplikację w tryb verificat
 9. Wyeksportować dane z MongoDB.
 10. Porównać wyniki TensorFlow i baseline statystycznego.
 
-## 11. Możliwe wyniki do przedstawienia w pracy
+## 12. Możliwe wyniki do przedstawienia w pracy
 
 Na podstawie zapisanych danych można analizować m.in.:
 
 - rozkład score dla próbek owner,
 - rozkład score dla próbek impostor,
+- porównanie finalScore, statisticalScore i tensorflowScore,
 - błąd rekonstrukcji TensorFlow względem progu,
 - porównanie TensorFlow score i statisticalScore,
 - wpływ liczby próbek enrollment na stabilność profilu,
@@ -602,7 +643,7 @@ Na podstawie zapisanych danych można analizować m.in.:
 - zmienność cech takich jak dwell, flight, releasePress i overlapRate,
 - FAR, FRR, EER, accuracy, jeśli zebrano próbki owner i impostor.
 
-## 12. Ważne założenia metodologiczne
+## 13. Ważne założenia metodologiczne
 
 Zwykły użytkownik nie widzi score podczas pisania. Ma to ograniczyć wpływ informacji zwrotnej na naturalny sposób pisania.
 
@@ -611,4 +652,3 @@ Treść notatek nie jest analizowana przez model. Model wykorzystuje cechy czaso
 Etap enrollment powinien być oddzielony od etapu verification. Dlatego profil można zamrozić przed rozpoczęciem właściwego testowania.
 
 Dane impostor powinny być zbierane na kontach testowych lub w kontrolowanych warunkach, bez udostępniania prywatnych danych użytkownika.
-
