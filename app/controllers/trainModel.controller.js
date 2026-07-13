@@ -206,6 +206,15 @@ function reconstructionError(inputVector, outputVector) {
   return mean(inputVector.map((value, index) => Math.pow(value - outputVector[index], 2)));
 }
 
+function scoreFromReconstructionError(error, threshold) {
+  if (error === null || error === undefined) {
+    return null;
+  }
+
+  const effectiveThreshold = Math.max(threshold || 0, 0.75);
+  return Math.max(0, Math.min(1, Math.exp(-error / effectiveThreshold)));
+}
+
 function arrayBufferFromBuffer(buffer) {
   if (buffer instanceof ArrayBuffer) {
     return buffer;
@@ -283,9 +292,7 @@ async function predictTensorFlowScore(modelData, vector) {
   const reconstructed = await prediction.array();
   const error = reconstructionError(normalizedVector, reconstructed[0]);
   const threshold = modelData.reconstructionThreshold;
-  const score = threshold && threshold > 0
-    ? Math.max(0, Math.min(1, 1 - error / (threshold * 2)))
-    : null;
+  const score = scoreFromReconstructionError(error, threshold);
   const isMatch = threshold !== null && error !== null && error <= threshold;
 
   input.dispose();
