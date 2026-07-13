@@ -154,6 +154,43 @@ function scoreFromDistance(distance, threshold) {
   return Math.max(0, Math.min(1, 1 - distance / (threshold * 2)));
 }
 
+function combineVerificationScores(statisticalScore, tensorflowScore) {
+  const hasStatisticalScore = statisticalScore !== null && statisticalScore !== undefined;
+  const hasTensorflowScore = tensorflowScore !== null && tensorflowScore !== undefined;
+
+  if (!hasStatisticalScore && !hasTensorflowScore) {
+    return {
+      score: null,
+      decision: "uncertain",
+      isMatch: false
+    };
+  }
+
+  if (!hasTensorflowScore) {
+    return {
+      score: statisticalScore,
+      decision: statisticalScore >= 0.7 ? "match" : statisticalScore >= 0.5 ? "uncertain" : "mismatch",
+      isMatch: statisticalScore >= 0.5
+    };
+  }
+
+  if (!hasStatisticalScore) {
+    return {
+      score: tensorflowScore,
+      decision: tensorflowScore >= 0.7 ? "match" : tensorflowScore >= 0.5 ? "uncertain" : "mismatch",
+      isMatch: tensorflowScore >= 0.5
+    };
+  }
+
+  const score = Math.max(0, Math.min(1, statisticalScore * 0.65 + tensorflowScore * 0.35));
+
+  return {
+    score,
+    decision: score >= 0.7 ? "match" : score >= 0.5 ? "uncertain" : "mismatch",
+    isMatch: score >= 0.5
+  };
+}
+
 function normalizeVector(vector, meanVector, stdVector) {
   return vector.map((value, index) => {
     const scale = stdVector[index] > 0 ? stdVector[index] : 1;
@@ -424,8 +461,10 @@ exports.verifySample = async (req, res) => {
     const statisticalScore = scoreFromDistance(distance, profile.threshold);
     const statisticalMatch = distance !== null && profile.threshold !== null && distance <= profile.threshold;
     const tensorflowResult = await predictTensorFlowScore(user.modelData, vector);
-    const score = tensorflowResult && tensorflowResult.score !== null ? tensorflowResult.score : statisticalScore;
-    const isMatch = tensorflowResult ? tensorflowResult.isMatch : statisticalMatch;
+    const tensorflowScore = tensorflowResult ? tensorflowResult.score : null;
+    const verificationResult = combineVerificationScores(statisticalScore, tensorflowScore);
+    const score = verificationResult.score;
+    const isMatch = verificationResult.isMatch;
 
     const verificationSample = new TrainingData({
       ...sample,
@@ -436,8 +475,11 @@ exports.verifySample = async (req, res) => {
       profileFrozen: config.profileFrozen,
       verification: {
         score,
+        finalScore: score,
+        decision: verificationResult.decision,
         distance,
         isMatch,
+        tensorflowScore,
         tensorflowError: tensorflowResult ? tensorflowResult.error : null,
         tensorflowThreshold: tensorflowResult ? tensorflowResult.threshold : null,
         statisticalScore,
@@ -449,8 +491,15 @@ exports.verifySample = async (req, res) => {
     res.status(200).json({
       isMatch,
       score,
+      decision: verificationResult.decision,
       distance,
       threshold: profile.threshold,
+      statistical: {
+        score: statisticalScore,
+        isMatch: statisticalMatch,
+        distance,
+        threshold: profile.threshold
+      },
       tensorflow: tensorflowResult,
       sampleCount: profile.sampleCount
     });

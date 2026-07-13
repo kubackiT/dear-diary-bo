@@ -53,8 +53,15 @@ const TrainingDataSchema = mongoose.model(
     },
     verification: {
       score: { type: Number, default: null },
+      finalScore: { type: Number, default: null },
+      decision: {
+        type: String,
+        enum: ["match", "uncertain", "mismatch", null],
+        default: null
+      },
       distance: { type: Number, default: null },
       isMatch: { type: Boolean, default: null },
+      tensorflowScore: { type: Number, default: null },
       tensorflowError: { type: Number, default: null },
       tensorflowThreshold: { type: Number, default: null },
       statisticalScore: { type: Number, default: null },
