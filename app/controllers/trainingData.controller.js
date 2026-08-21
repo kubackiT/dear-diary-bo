@@ -13,11 +13,17 @@ exports.trainingData = async (req, res) => {
 
     const [config, user] = await Promise.all([
       researchController.getGlobalConfig(),
-      User.findById(userId, "researchSettings")
+      User.findById(userId, "researchSettings typingProfile modelData")
     ]);
-    const sampleType = config.mode === "enrollment" && config.profileUpdatesEnabled && !config.profileFrozen
-      ? "enrollment"
-      : "verification";
+    if (!user) {
+      return res.status(404).send({ error: "Uzytkownik nie znaleziony" });
+    }
+    const hasFrozenProfile = !!(
+      user.typingProfile?.frozen &&
+      user.typingProfile?.sampleCount &&
+      user.modelData?.modelTopology
+    );
+    const sampleType = hasFrozenProfile ? "verification" : "enrollment";
     const actorType = sampleType === "verification"
       ? user?.researchSettings?.currentActorType || "owner"
       : "owner";
@@ -40,7 +46,7 @@ exports.trainingData = async (req, res) => {
       sampleType,
       actorType,
       profileVersion: config.profileVersion,
-      profileFrozen: config.profileFrozen
+      profileFrozen: hasFrozenProfile
     });
     await newEntry.save();
 

@@ -402,15 +402,6 @@ async function trainUserProfile(userId) {
     keyCount: { $gte: MIN_ENROLLMENT_KEY_COUNT }
   }).sort({ timestamp: 1 }).limit(config.targetEnrollmentSamples);
 
-  if (config.profileFrozen || !config.profileUpdatesEnabled) {
-    return {
-      ready: false,
-      frozen: true,
-      message: "Profil jest zamrozony. Nowe probki nie aktualizuja profilu.",
-      sampleCount: samples.length
-    };
-  }
-
   if (samples.length < config.targetEnrollmentSamples) {
     return {
       ready: false,
@@ -461,10 +452,10 @@ exports.getModel = async (req, res) => {
     const user = await User.findById(req.params.userId);
 
     if (!user || !user.typingProfile || !user.typingProfile.sampleCount) {
-      return res.status(404).json({ error: "Profil pisania uzytkownika nie zostal znaleziony" });
+      return res.status(200).json({ ready: false });
     }
 
-    res.status(200).json(user.typingProfile);
+    res.status(200).json({ ...user.typingProfile.toObject(), ready: true });
   } catch (error) {
     res.status(500).json({ error: "Blad podczas pobierania profilu pisania" });
   }
@@ -487,7 +478,7 @@ exports.verifySample = async (req, res) => {
       return res.status(404).json({ error: "Profil pisania uzytkownika nie zostal znaleziony" });
     }
 
-    if (config.mode !== "verification" || !config.profileFrozen || !user.typingProfile.frozen) {
+    if (!user.typingProfile.frozen || !user.modelData?.modelTopology) {
       return res.status(409).json({ error: "Profil nie jest gotowy do weryfikacji" });
     }
 
@@ -511,8 +502,8 @@ exports.verifySample = async (req, res) => {
       userId,
       sampleType: "verification",
       actorType,
-      profileVersion: config.profileVersion,
-      profileFrozen: config.profileFrozen,
+      profileVersion: profile.version,
+      profileFrozen: true,
       verification: {
         score,
         finalScore: score,

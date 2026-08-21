@@ -53,10 +53,18 @@ exports.getConfig = async (req, res) => {
 
 exports.getRuntimeConfig = async (req, res) => {
   try {
-    const config = await getGlobalConfig();
+    const [config, user] = await Promise.all([
+      getGlobalConfig(),
+      User.findById(req.userId, "typingProfile modelData")
+    ]);
+    const profileReady = !!(
+      user?.typingProfile?.frozen &&
+      user?.typingProfile?.sampleCount &&
+      user?.modelData?.modelTopology
+    );
     res.status(200).json({
-      mode: config.mode,
-      profileFrozen: config.profileFrozen,
+      mode: profileReady ? "verification" : "enrollment",
+      profileFrozen: profileReady,
       targetEnrollmentSamples: config.targetEnrollmentSamples,
       validationFraction: config.validationFraction,
       sampleKeyThreshold: config.sampleKeyThreshold,

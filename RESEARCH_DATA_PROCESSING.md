@@ -486,7 +486,7 @@ trainingSampleCount
 validationSampleCount
 ```
 
-Po poprawnym zapisaniu modelu backend automatycznie zamraża profil, wyłącza jego aktualizowanie i przełącza globalny tryb na `verification`. Jeżeli trenowanie zakończy się błędem, profil pozostaje niezamrożony, a administrator może ponowić operację przyciskiem `Retry profile training`.
+Po poprawnym zapisaniu modelu backend automatycznie zamraża profil i wyłącza jego aktualizowanie. Stan runtime jest wyznaczany osobno dla zalogowanego użytkownika: brak gotowego profilu oznacza `enrollment`, natomiast istnienie zamrożonego profilu i modelu oznacza `verification`. Jeżeli trenowanie zakończy się błędem, profil pozostaje niezamrożony, a administrator może ponowić operację przyciskiem `Retry profile training`.
 
 ### 7.2. Weryfikacja
 
