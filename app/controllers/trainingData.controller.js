@@ -22,6 +22,19 @@ exports.trainingData = async (req, res) => {
       ? user?.researchSettings?.currentActorType || "owner"
       : "owner";
 
+    const enrollmentFilter = { userId, sampleType: "enrollment", profileVersion: config.profileVersion };
+    if (sampleType === "enrollment") {
+      const currentCount = await TrainingData.countDocuments(enrollmentFilter);
+      if (currentCount >= config.targetEnrollmentSamples) {
+        return res.status(409).send({
+          error: "Osiagnieto docelowa liczbe probek enrollment",
+          enrollmentCount: currentCount,
+          targetEnrollmentSamples: config.targetEnrollmentSamples,
+          targetReached: true
+        });
+      }
+    }
+
     const newEntry = new TrainingData({
       ...req.body,
       sampleType,
@@ -31,9 +44,15 @@ exports.trainingData = async (req, res) => {
     });
     await newEntry.save();
 
+    const enrollmentCount = sampleType === "enrollment"
+      ? await TrainingData.countDocuments(enrollmentFilter)
+      : undefined;
     res.status(200).send({
       message: "Dane uzytkownika zapisane do profilu pisania",
-      sampleId: newEntry._id
+      sampleId: newEntry._id,
+      enrollmentCount,
+      targetEnrollmentSamples: config.targetEnrollmentSamples,
+      targetReached: sampleType === "enrollment" && enrollmentCount >= config.targetEnrollmentSamples
     });
   } catch (error) {
     res.status(500).send({ error: "Blad zapisu" });

@@ -16,5 +16,6 @@ module.exports = function(app) {
   app.put("/api/research/config", [authJwt.verifyToken, authJwt.isAdmin], controller.updateConfig);
   app.put("/api/research/users/:userId/settings", [authJwt.verifyToken, authJwt.isAdmin], controller.updateUserResearchSettings);
   app.post("/api/research/freeze-profile", [authJwt.verifyToken, authJwt.isAdmin], controller.freezeProfile);
+  app.post("/api/research/start-enrollment", [authJwt.verifyToken, authJwt.isAdmin], controller.startEnrollment);
   app.get("/api/research/stats", [authJwt.verifyToken, authJwt.isAdmin], controller.getStats);
 };

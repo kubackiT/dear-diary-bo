@@ -16,11 +16,16 @@ const User = mongoose.model(
       reconstructionThreshold: { type: Number, default: null },
       reconstructionMean: { type: Number, default: null },
       reconstructionStdDev: { type: Number, default: null },
+      profileVersion: { type: Number, default: null },
+      trainingSampleCount: { type: Number, default: 0 },
+      validationSampleCount: { type: Number, default: 0 },
       trainedAt: { type: Date, default: null }
     },
     typingProfile: {
       version: { type: Number, default: 1 },
       sampleCount: { type: Number, default: 0 },
+      trainingSampleCount: { type: Number, default: 0 },
+      validationSampleCount: { type: Number, default: 0 },
       featureNames: { type: [String], default: [] },
       meanVector: { type: [Number], default: [] },
       stdVector: { type: [Number], default: [] },

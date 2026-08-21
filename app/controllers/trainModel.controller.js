@@ -227,8 +227,8 @@ function arrayBufferFromBuffer(buffer) {
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
 }
 
-async function trainTensorFlowAutoencoder(vectors, profile) {
-  const normalizedVectors = vectors.map((vector) =>
+async function trainTensorFlowAutoencoder(trainingVectors, validationVectors, profile) {
+  const normalizedVectors = trainingVectors.map((vector) =>
     normalizeVector(vector, profile.meanVector, profile.stdVector)
   );
   const inputSize = profile.featureNames.length;
@@ -250,15 +250,20 @@ async function trainTensorFlowAutoencoder(vectors, profile) {
     verbose: 0
   });
 
-  const prediction = model.predict(xs);
+  const normalizedValidationVectors = validationVectors.map((vector) =>
+    normalizeVector(vector, profile.meanVector, profile.stdVector)
+  );
+  const validationTensor = tf.tensor2d(normalizedValidationVectors, [normalizedValidationVectors.length, inputSize]);
+  const prediction = model.predict(validationTensor);
   const reconstructed = await prediction.array();
-  const errors = normalizedVectors.map((vector, index) => reconstructionError(vector, reconstructed[index]));
+  const errors = normalizedValidationVectors.map((vector, index) => reconstructionError(vector, reconstructed[index]));
   const reconstructionMean = mean(errors);
   const reconstructionStdDev = stdDev(errors, 0.01);
   const reconstructionThreshold = Math.max(0.05, reconstructionMean + 3 * reconstructionStdDev);
   const artifacts = await model.save(tf.io.withSaveHandler(async (modelArtifacts) => modelArtifacts));
 
   xs.dispose();
+  validationTensor.dispose();
   prediction.dispose();
   model.dispose();
 
@@ -343,12 +348,12 @@ function getStdFloor(featureName) {
   return 1;
 }
 
-function buildProfile(samples, config) {
+function buildProfile(trainingSamples, validationSamples, config) {
   const featureNames = [
     ...BASE_FEATURE_NAMES,
-    ...getDigraphFeatureNames(samples, config.maxDigraphFeatures)
+    ...getDigraphFeatureNames(trainingSamples, config.maxDigraphFeatures)
   ];
-  const vectors = samples.map((sample) => sampleToVector(sample, featureNames));
+  const vectors = trainingSamples.map((sample) => sampleToVector(sample, featureNames));
   const meanVector = featureNames.map((_, featureIndex) =>
     mean(vectors.map((vector) => vector[featureIndex]))
   );
@@ -358,14 +363,17 @@ function buildProfile(samples, config) {
       getStdFloor(featureName)
     )
   );
-  const distances = vectors.map((vector) => vectorDistance(vector, meanVector, stdVector));
+  const validationVectors = validationSamples.map((sample) => sampleToVector(sample, featureNames));
+  const distances = validationVectors.map((vector) => vectorDistance(vector, meanVector, stdVector));
   const avgDistance = mean(distances);
   const distanceStdDev = stdDev(distances, 0.5);
   const threshold = Math.max(1.5, avgDistance + 2 * distanceStdDev);
 
   return {
     version: 1,
-    sampleCount: samples.length,
+    sampleCount: trainingSamples.length + validationSamples.length,
+    trainingSampleCount: trainingSamples.length,
+    validationSampleCount: validationSamples.length,
     featureNames,
     meanVector,
     stdVector,
@@ -376,11 +384,23 @@ function buildProfile(samples, config) {
 
 async function trainUserProfile(userId) {
   const config = await researchController.getGlobalConfig();
+  const existingUser = await User.findById(userId);
+  if (!existingUser) throw new Error("Uzytkownik nie znaleziony");
+  if (existingUser.modelData?.modelTopology && existingUser.modelData.profileVersion === config.profileVersion) {
+    const { config: frozenConfig } = await researchController.freezeProfileForUser(userId);
+    return {
+      ready: true,
+      alreadyTrained: true,
+      config: frozenConfig,
+      message: "Model dla tej rundy byl juz wytrenowany; profil zostal zamrozony."
+    };
+  }
   const samples = await TrainingData.find({
     userId,
     sampleType: "enrollment",
+    profileVersion: config.profileVersion,
     keyCount: { $gte: MIN_ENROLLMENT_KEY_COUNT }
-  }).sort({ timestamp: 1 });
+  }).sort({ timestamp: 1 }).limit(config.targetEnrollmentSamples);
 
   if (config.profileFrozen || !config.profileUpdatesEnabled) {
     return {
@@ -391,25 +411,34 @@ async function trainUserProfile(userId) {
     };
   }
 
-  if (samples.length < config.minEnrollmentSamples) {
+  if (samples.length < config.targetEnrollmentSamples) {
     return {
       ready: false,
-      message: `Za malo danych do profilu. Wymagane minimum: ${config.minEnrollmentSamples}, obecnie: ${samples.length}.`,
+      message: `Za malo danych do profilu. Wymagany cel: ${config.targetEnrollmentSamples}, obecnie: ${samples.length}.`,
       sampleCount: samples.length
     };
   }
 
-  const typingProfile = buildProfile(samples, config);
+  const validationCount = Math.max(1, Math.round(samples.length * config.validationFraction));
+  const trainingSamples = samples.slice(0, samples.length - validationCount);
+  const validationSamples = samples.slice(samples.length - validationCount);
+  const typingProfile = buildProfile(trainingSamples, validationSamples, config);
   typingProfile.version = config.profileVersion;
   typingProfile.frozen = false;
-  const vectors = samples.map((sample) => sampleToVector(sample, typingProfile.featureNames));
-  const modelData = await trainTensorFlowAutoencoder(vectors, typingProfile);
+  const trainingVectors = trainingSamples.map((sample) => sampleToVector(sample, typingProfile.featureNames));
+  const validationVectors = validationSamples.map((sample) => sampleToVector(sample, typingProfile.featureNames));
+  const modelData = await trainTensorFlowAutoencoder(trainingVectors, validationVectors, typingProfile);
+  modelData.profileVersion = config.profileVersion;
+  modelData.trainingSampleCount = trainingSamples.length;
+  modelData.validationSampleCount = validationSamples.length;
   await User.findByIdAndUpdate(userId, { typingProfile, modelData }, { new: true });
+  const { config: frozenConfig } = await researchController.freezeProfileForUser(userId);
 
   return {
     ready: true,
     message: `Profil pisania dla uzytkownika ${userId} zostal zaktualizowany.`,
     profile: typingProfile,
+    config: frozenConfig,
     tensorflow: {
       reconstructionThreshold: modelData.reconstructionThreshold,
       reconstructionMean: modelData.reconstructionMean,
@@ -456,6 +485,10 @@ exports.verifySample = async (req, res) => {
 
     if (!user || !user.typingProfile || !user.typingProfile.sampleCount) {
       return res.status(404).json({ error: "Profil pisania uzytkownika nie zostal znaleziony" });
+    }
+
+    if (config.mode !== "verification" || !config.profileFrozen || !user.typingProfile.frozen) {
+      return res.status(409).json({ error: "Profil nie jest gotowy do weryfikacji" });
     }
 
     const profile = user.typingProfile;

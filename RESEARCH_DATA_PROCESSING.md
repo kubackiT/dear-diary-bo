@@ -14,11 +14,11 @@ Moduł badawczy działa w dwóch głównych trybach:
 
 Tryb `Enrollment` służy do budowania profilu użytkownika. Użytkownik pisze naturalnie w aplikacji, a system zbiera próbki dynamiki pisania. Po osiągnięciu ustawionego progu liczby naciśnięć klawiszy próbka jest zapisywana w bazie jako dane profilujące.
 
-Po zebraniu minimalnej liczby próbek backend może utworzyć profil użytkownika oraz wytrenować model TensorFlow.
+Domyślnie pojedyncza próbka enrollment jest tworzona po zarejestrowaniu 500 zakończonych naciśnięć klawiszy. System zbiera 100 takich próbek. Po zapisaniu próbki docelowej model jest trenowany jeden raz, a po powodzeniu profil zostaje automatycznie zamrożony i system przechodzi do fazy verification.
 
 ### Verification
 
-Tryb `Verification` służy do testowania gotowego profilu. Nowe próbki nie aktualizują już profilu, tylko są porównywane z wcześniej utworzonym modelem użytkownika. Wynikiem jest score zgodności oraz decyzja, czy próbka pasuje do profilu.
+Tryb `Verification` służy do testowania gotowego profilu. Nowe próbki nie aktualizują już profilu, tylko są porównywane z wcześniej utworzonym modelem użytkownika. Domyślnie każda próbka obejmuje 250 zakończonych naciśnięć. Po jej wysłaniu bufor pomiarowy jest zerowany, dlatego kolejne wyniki powstają z niezależnych, a nie kumulacyjnych fragmentów pisania. Wynikiem jest score zgodności oraz decyzja, czy próbka pasuje do profilu.
 
 Próbki verification mogą być oznaczane jako:
 
@@ -221,7 +221,7 @@ max
 count
 ```
 
-Frontend wysyła do backendu wszystkie zarejestrowane digrafy z próbki. Backend dopiero podczas budowy profilu wybiera najczęstsze digrafy z całego zbioru próbek enrollment użytkownika. Liczba digrafów użytych jako cechy modelu jest ustawiana w panelu admina:
+Frontend wysyła do backendu wszystkie zarejestrowane digrafy z próbki. Backend dopiero podczas budowy profilu wybiera najczęstsze digrafy ze zbioru treningowego użytkownika. Liczba digrafów użytych jako cechy modelu jest ustawiana w panelu admina:
 
 ```text
 Max digraph features
@@ -337,13 +337,22 @@ Próbki zbyt małe są pomijane. Minimalny rozmiar próbki to obecnie:
 250 key events
 ```
 
-Dodatkowo panel admina posiada ustawienie:
+Domyślna liczba próbek wymagana do rozpoczęcia trenowania jest określana przez ustawienie:
 
 ```text
-Minimum enrollment samples
+Target enrollment samples
 ```
 
-które określa, ile próbek enrollment jest wymagane, zanim model zostanie uznany za możliwy do trenowania.
+Domyślna wartość wynosi 100. Backend przyjmuje próbki wyłącznie z aktualnego `profileVersion` i zatrzymuje ich zbieranie po osiągnięciu celu. Model nie jest aktualizowany po każdej próbce — trenowanie zostaje uruchomione jeden raz, dokładnie po zapisaniu próbki docelowej.
+
+Próbki są uporządkowane chronologicznie i dzielone zgodnie z ustawieniem `validationFraction`, którego domyślna wartość wynosi `0.2`:
+
+```text
+pierwsze 80 próbek  -> zbiór treningowy
+ostatnie 20 próbek  -> zbiór walidacyjny
+```
+
+Zbiór walidacyjny służy do wyznaczenia progów obu modeli. Nie jest końcowym zbiorem testowym — tę rolę pełnią późniejsze próbki verification właściciela i impostorów.
 
 ### 6.1. Wektor cech
 
@@ -387,7 +396,7 @@ digraph.<para>.stdDev
 
 ### 6.2. Profil statystyczny
 
-Na podstawie wektorów próbek enrollment backend wylicza:
+Na podstawie wektorów ze zbioru treningowego backend wylicza:
 
 ```text
 meanVector
@@ -395,13 +404,22 @@ stdVector
 threshold
 featureNames
 sampleCount
+trainingSampleCount
+validationSampleCount
 ```
 
 `meanVector` to średni wektor cech użytkownika.
 
 `stdVector` opisuje typową zmienność każdej cechy. Dla części cech stosowane są minimalne wartości odchylenia, żeby profil nie był zbyt wrażliwy na małe różnice wynikające np. z małej liczby próbek.
 
-`threshold` jest progiem bazowym używanym przez prostszy model statystyczny.
+`threshold` jest progiem bazowym używanym przez prostszy model statystyczny. Nie jest wyznaczany na próbkach treningowych. Backend oblicza odległości próbek walidacyjnych od profilu, a następnie stosuje:
+
+```text
+distance = sqrt(mean(((x - meanVector) / stdVector)²))
+threshold = max(1.5, mean(distance) + 2 * stdDev(distance))
+```
+
+`distance` oznacza znormalizowane odchylenie próbki od profilu statystycznego. Nie jest wynikiem działania autoenkodera.
 
 Profil statystyczny pełni dwie funkcje:
 
@@ -424,15 +442,16 @@ model uczy się odtwarzać typowe wektory cech użytkownika
 
 Podczas treningu:
 
-1. Backend pobiera próbki enrollment użytkownika.
-2. Zamienia każdą próbkę na wektor cech.
-3. Normalizuje wektory z użyciem `meanVector` i `stdVector`.
-4. Trenuje autoenkoder TensorFlow.
-5. Oblicza błędy rekonstrukcji dla próbek treningowych.
-6. Wyznacza próg rekonstrukcji:
+1. Backend pobiera 100 próbek enrollment użytkownika z aktualnej wersji profilu.
+2. Dzieli je chronologicznie na 80 próbek treningowych i 20 walidacyjnych.
+3. Zamienia próbki na wektory cech.
+4. Normalizuje wektory z użyciem `meanVector` i `stdVector` wyznaczonych na zbiorze treningowym.
+5. Trenuje autoenkoder TensorFlow wyłącznie na próbkach treningowych.
+6. Oblicza błędy rekonstrukcji dla próbek walidacyjnych.
+7. Wyznacza próg rekonstrukcji:
 
 ```text
-reconstructionThreshold = reconstructionMean + 3 * reconstructionStdDev
+reconstructionThreshold = max(0.05, reconstructionMean + 3 * reconstructionStdDev)
 ```
 
 z minimalną wartością bezpieczeństwa.
@@ -462,7 +481,12 @@ reconstructionThreshold
 reconstructionMean
 reconstructionStdDev
 trainedAt
+profileVersion
+trainingSampleCount
+validationSampleCount
 ```
+
+Po poprawnym zapisaniu modelu backend automatycznie zamraża profil, wyłącza jego aktualizowanie i przełącza globalny tryb na `verification`. Jeżeli trenowanie zakończy się błędem, profil pozostaje niezamrożony, a administrator może ponowić operację przyciskiem `Retry profile training`.
 
 ### 7.2. Weryfikacja
 
@@ -554,54 +578,39 @@ Progi te są progami roboczymi.
 
 Panel admina umożliwia kontrolę nad procesem badawczym.
 
-### 10.1. Mode
+### 10.1. Stan eksperymentu
 
-```text
-Enrollment
-Verification
-```
+Panel pokazuje aktualny tryb (`enrollment` albo `verification`) oraz informację, czy profil jest zbierany, czy zamrożony. Zmiana fazy po poprawnym trenowaniu odbywa się automatycznie.
 
-`Enrollment` oznacza zbieranie danych do profilu.
+### 10.2. Target enrollment samples
 
-`Verification` oznacza testowanie gotowego profilu.
+Docelowa liczba próbek wymagana do jednorazowego trenowania profilu. Domyślna wartość wynosi 100.
 
-### 10.2. Profile updates enabled
+### 10.3. Validation fraction
 
-Określa, czy profil może być aktualizowany nowymi próbkami enrollment.
+Część próbek odkładana do wyznaczenia progów. Domyślna wartość `0.2` oznacza podział 80%/20%.
 
-### 10.3. Profile frozen
+### 10.4. Enrollment key threshold
 
-Globalna flaga zamrożenia profilu. Pomaga utrzymać rozdział między etapem treningu i testowania.
+Liczba zakończonych naciśnięć potrzebna do utworzenia jednej próbki enrollment. Domyślna wartość wynosi 500, a panel nie pozwala ustawić mniej niż 250.
 
-### 10.4. Minimum enrollment samples
+### 10.5. Verification key threshold
 
-Minimalna liczba próbek wymagana do trenowania profilu.
+Stała długość niezależnej próbki verification. Domyślna wartość wynosi 250. Po wysłaniu próbki pomiary są zerowane.
 
-### 10.5. Enrollment key threshold
-
-Liczba naciśnięć klawiszy potrzebna do utworzenia jednej próbki enrollment.
-
-### 10.6. Verification key threshold
-
-Liczba naciśnięć klawiszy wymagana, zanim system zacznie liczyć score verification.
-
-### 10.7. Verification refresh step
-
-Co ile kolejnych naciśnięć klawiszy score verification jest przeliczany.
-
-### 10.8. Long pause threshold ms
+### 10.6. Long pause threshold ms
 
 Próg rozdzielający zwykłe przejście między klawiszami od długiej pauzy.
 
-### 10.9. Max digraph features
+### 10.7. Max digraph features
 
 Liczba najczęstszych digrafów używana jako cechy modelu.
 
-### 10.10. Selected user
+### 10.8. Selected user
 
 Pozwala wybrać użytkownika, którego statystyki i wyniki są wyświetlane.
 
-### 10.11. Current verification actor
+### 10.9. Current verification actor
 
 Pozwala oznaczyć, kto aktualnie pisze próbki verification dla wybranego profilu:
 
@@ -612,22 +621,24 @@ Impostor
 
 To ustawienie jest zapisywane przy nowych próbkach verification jako `actorType`.
 
-### 10.12. Freeze selected profile
+### 10.10. Retry profile training
 
-Zamraża profil wybranego użytkownika i przełącza aplikację w tryb verification. Od tego momentu nowe próbki nie powinny douczać profilu, tylko służyć do jego testowania.
+Ponawia trenowanie, jeżeli po osiągnięciu celu wcześniejsza próba zakończyła się błędem. Jeżeli model został zapisany, ale nie udało się zamrozić profilu, ponowienie kończy proces zamrożenia.
+
+### 10.11. Start new enrollment round
+
+Rozpoczyna badanie wybranego użytkownika od początku: zwiększa `profileVersion`, czyści bieżący profil i model oraz przełącza system do enrollment. Historyczne próbki pozostają w bazie, lecz nie są wykorzystywane przez nową wersję. Dla nowego użytkownika przycisk nie jest potrzebny, jeżeli system znajduje się już w fazie enrollment.
 
 ## 11. Sugerowany przebieg badania
 
 1. Utworzyć konto testowe użytkownika.
-2. Ustawić tryb `Enrollment`.
-3. Użytkownik pisze naturalnie w aplikacji.
-4. Zebrać wymaganą liczbę próbek enrollment.
-5. Zamrozić profil przyciskiem `Freeze selected profile`.
-6. Ustawić tryb `Verification`.
-7. Zebrać próbki verification pisane przez właściciela profilu (`Owner`).
-8. Opcjonalnie zebrać próbki verification pisane przez inną osobę (`Impostor`).
-9. Wyeksportować dane z MongoDB.
-10. Porównać wyniki TensorFlow i baseline statystycznego.
+2. Upewnić się, że system znajduje się w fazie `Enrollment`.
+3. Użytkownik pisze naturalnie w aplikacji, aż zostanie zebranych 100 próbek.
+4. Po próbce docelowej poczekać na jednorazowe trenowanie i automatyczne zamrożenie profilu.
+5. Zebrać niezależne próbki verification pisane przez właściciela profilu (`Owner`).
+6. Zebrać próbki verification pisane przez inną osobę (`Impostor`).
+7. Wyeksportować dane z MongoDB.
+8. Porównać wyniki TensorFlow i baseline statystycznego.
 
 ## 12. Możliwe wyniki do przedstawienia w pracy
 
@@ -649,6 +660,6 @@ Zwykły użytkownik nie widzi score podczas pisania. Ma to ograniczyć wpływ in
 
 Treść notatek nie jest analizowana przez model. Model wykorzystuje cechy czasowe i behawioralne.
 
-Etap enrollment powinien być oddzielony od etapu verification. Dlatego profil można zamrozić przed rozpoczęciem właściwego testowania.
+Etap enrollment jest oddzielony od etapu verification. Profil zostaje automatycznie zamrożony dopiero po wytrenowaniu obu modeli na ustalonym zbiorze, dzięki czemu próbki testowe nie aktualizują parametrów profilu.
 
 Dane impostor powinny być zbierane na kontach testowych lub w kontrolowanych warunkach, bez udostępniania prywatnych danych użytkownika.

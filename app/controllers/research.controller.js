@@ -8,10 +8,10 @@ const DEFAULT_CONFIG = {
   mode: "enrollment",
   profileUpdatesEnabled: true,
   profileFrozen: false,
-  minEnrollmentSamples: 10,
-  sampleKeyThreshold: 1000,
-  verificationKeyThreshold: 120,
-  verificationStep: 60,
+  targetEnrollmentSamples: 100,
+  validationFraction: 0.2,
+  sampleKeyThreshold: 500,
+  verificationKeyThreshold: 250,
   longPauseThresholdMs: 2000,
   maxDigraphFeatures: 20,
   profileVersion: 1,
@@ -57,10 +57,10 @@ exports.getRuntimeConfig = async (req, res) => {
     res.status(200).json({
       mode: config.mode,
       profileFrozen: config.profileFrozen,
-      minEnrollmentSamples: config.minEnrollmentSamples,
+      targetEnrollmentSamples: config.targetEnrollmentSamples,
+      validationFraction: config.validationFraction,
       sampleKeyThreshold: config.sampleKeyThreshold,
       verificationKeyThreshold: config.verificationKeyThreshold,
-      verificationStep: config.verificationStep,
       longPauseThresholdMs: config.longPauseThresholdMs,
       maxDigraphFeatures: config.maxDigraphFeatures,
       profileVersion: config.profileVersion
@@ -73,13 +73,11 @@ exports.getRuntimeConfig = async (req, res) => {
 exports.updateConfig = async (req, res) => {
   try {
     const allowedFields = [
-      "mode",
       "profileUpdatesEnabled",
-      "profileFrozen",
-      "minEnrollmentSamples",
+      "targetEnrollmentSamples",
+      "validationFraction",
       "sampleKeyThreshold",
       "verificationKeyThreshold",
-      "verificationStep",
       "longPauseThresholdMs",
       "maxDigraphFeatures"
     ];
@@ -92,6 +90,18 @@ exports.updateConfig = async (req, res) => {
     });
 
     const config = await getGlobalConfig();
+    if (update.targetEnrollmentSamples !== undefined &&
+        (!Number.isInteger(update.targetEnrollmentSamples) || update.targetEnrollmentSamples < 2)) {
+      return res.status(400).json({ error: "Docelowa liczba probek musi byc liczba calkowita >= 2" });
+    }
+    if (update.validationFraction !== undefined &&
+        (update.validationFraction < 0.1 || update.validationFraction > 0.4)) {
+      return res.status(400).json({ error: "Udzial walidacji musi miescic sie w zakresie 0.1-0.4" });
+    }
+    if (update.sampleKeyThreshold !== undefined &&
+        (!Number.isInteger(update.sampleKeyThreshold) || update.sampleKeyThreshold < 250)) {
+      return res.status(400).json({ error: "Probka enrollment musi zawierac co najmniej 250 klawiszy" });
+    }
     Object.assign(config, update, { updatedAt: new Date() });
     await config.save();
 
@@ -101,6 +111,29 @@ exports.updateConfig = async (req, res) => {
   }
 };
 
+async function freezeProfileForUser(userId) {
+  const config = await getGlobalConfig();
+  const user = await User.findById(userId);
+  if (!user) throw new Error("Uzytkownik nie znaleziony");
+  if (!user.modelData?.modelTopology || user.modelData.profileVersion !== config.profileVersion) {
+    throw new Error("Brak modelu wytrenowanego dla biezacej rundy");
+  }
+  const frozenAt = new Date();
+  config.profileFrozen = true;
+  config.profileUpdatesEnabled = false;
+  config.mode = "verification";
+  config.frozenAt = frozenAt;
+  config.updatedAt = frozenAt;
+  await config.save();
+  user.typingProfile.frozen = true;
+  user.typingProfile.frozenAt = frozenAt;
+  user.typingProfile.version = config.profileVersion;
+  await user.save();
+  return { config, user };
+}
+
+exports.freezeProfileForUser = freezeProfileForUser;
+
 exports.freezeProfile = async (req, res) => {
   try {
     const { userId } = req.body;
@@ -109,29 +142,7 @@ exports.freezeProfile = async (req, res) => {
       return res.status(400).json({ error: "Brak userId" });
     }
 
-    const frozenAt = new Date();
-    const config = await getGlobalConfig();
-    config.profileFrozen = true;
-    config.profileUpdatesEnabled = false;
-    config.mode = "verification";
-    config.profileVersion += 1;
-    config.frozenAt = frozenAt;
-    config.updatedAt = frozenAt;
-    await config.save();
-
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        "typingProfile.frozen": true,
-        "typingProfile.frozenAt": frozenAt,
-        "typingProfile.version": config.profileVersion
-      },
-      { new: true }
-    );
-
-    if (!user) {
-      return res.status(404).json({ error: "Uzytkownik nie znaleziony" });
-    }
+    const { config, user } = await freezeProfileForUser(userId);
 
     res.status(200).json({
       message: "Profil zostal zamrozony",
@@ -143,12 +154,35 @@ exports.freezeProfile = async (req, res) => {
   }
 };
 
+exports.startEnrollment = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: "Brak userId" });
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "Uzytkownik nie znaleziony" });
+    const config = await getGlobalConfig();
+    config.mode = "enrollment";
+    config.profileFrozen = false;
+    config.profileUpdatesEnabled = true;
+    config.profileVersion += 1;
+    config.frozenAt = null;
+    config.updatedAt = new Date();
+    await config.save();
+    user.typingProfile = undefined;
+    user.modelData = undefined;
+    await user.save();
+    res.status(200).json({ message: "Rozpoczeto nowa runde enrollment", config });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Blad rozpoczynania rundy" });
+  }
+};
+
 exports.getStats = async (req, res) => {
   try {
     const userId = req.query.userId;
-    const filter = userId ? { userId } : {};
-    const [config, enrollmentCount, verificationCount, lastSamples] = await Promise.all([
-      getGlobalConfig(),
+    const config = await getGlobalConfig();
+    const filter = { ...(userId ? { userId } : {}), profileVersion: config.profileVersion };
+    const [enrollmentCount, verificationCount, lastSamples] = await Promise.all([
       TrainingData.countDocuments({ ...filter, sampleType: "enrollment" }),
       TrainingData.countDocuments({ ...filter, sampleType: "verification" }),
       TrainingData.find(filter).sort({ timestamp: -1 }).limit(10)
@@ -167,10 +201,11 @@ exports.getStats = async (req, res) => {
 
 exports.getUsers = async (req, res) => {
   try {
+    const config = await getGlobalConfig();
     const users = await User.find({}, "username email typingProfile researchSettings").sort({ username: 1 });
     const userIds = users.map((user) => user._id);
     const counts = await TrainingData.aggregate([
-      { $match: { userId: { $in: userIds } } },
+      { $match: { userId: { $in: userIds }, profileVersion: config.profileVersion } },
       {
         $group: {
           _id: {
