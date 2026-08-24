@@ -70,7 +70,7 @@ db.mongoose
 
 // simple route
 app.get("/", (req, res) => {
-  res.json({ message: "Welcome to dear diary application." });
+  res.json({ message: "Witamy w aplikacji Drogi pamiętniku." });
 });
 
 // routes
