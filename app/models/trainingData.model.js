@@ -12,10 +12,44 @@ const MetricSummarySchema = new mongoose.Schema(
   { _id: false }
 );
 
+const KeyOccurrenceSchema = new mongoose.Schema({
+  index: { type: Number, required: true },
+  code: { type: String, required: true },
+  category: { type: String, default: "other" },
+  keydownOffsetMs: { type: Number, required: true },
+  keyupOffsetMs: { type: Number, default: null },
+  dwellMs: { type: Number, default: null },
+  isCorrection: { type: Boolean, default: false }
+}, { _id: false });
+
+const KeyTransitionSchema = new mongoose.Schema({
+  fromIndex: { type: Number, required: true },
+  toIndex: { type: Number, required: true },
+  fromCode: { type: String, required: true },
+  toCode: { type: String, required: true },
+  keydownKeydownMs: { type: Number, required: true },
+  keyupKeydownMs: { type: Number, default: null },
+  keyupKeyupMs: { type: Number, default: null },
+  isLongPause: { type: Boolean, default: false }
+}, { _id: false });
+
 const TrainingDataSchema = mongoose.model(
   "TrainingData",
   new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    collectorVersion: { type: Number, default: 1 },
+    sessionId: { type: String, default: null },
+    sampleSequence: { type: Number, default: null },
+    sampleStartedAt: { type: Date, default: null },
+    environment: {
+      userAgent: { type: String, default: "" },
+      platform: { type: String, default: "" },
+      language: { type: String, default: "" },
+      timezone: { type: String, default: "" },
+      screenWidth: { type: Number, default: null },
+      screenHeight: { type: Number, default: null },
+      touchPoints: { type: Number, default: 0 }
+    },
     sampleType: {
       type: String,
       enum: ["enrollment", "verification"],
@@ -49,7 +83,9 @@ const TrainingDataSchema = mongoose.model(
       releasePressTimes: { type: [Number], default: [] },
       releaseReleaseTimes: { type: [Number], default: [] },
       pauseTimes: { type: [Number], default: [] },
-      burstLengths: { type: [Number], default: [] }
+      burstLengths: { type: [Number], default: [] },
+      keyOccurrences: { type: [KeyOccurrenceSchema], default: [] },
+      transitions: { type: [KeyTransitionSchema], default: [] }
     },
     verification: {
       score: { type: Number, default: null },

@@ -684,3 +684,18 @@ npm run study:analyze:user -- --username=user01 --train=60 --validation=20 --tes
 ```
 
 Bez próbek innych użytkowników wynik nie jest pełną accuracy. Pozwala obliczyć jedynie akceptację próbek właściciela i FRR. FAR, EER, ROC-AUC oraz balanced accuracy wymagają negatywnych próbek testowych.
+
+## 15. Rozszerzony zapis surowych danych
+
+Próbki kolektora w wersji `2` zawierają dodatkowo:
+
+- `collectorVersion` — wersję algorytmu zbierającego,
+- `sessionId` i `sampleSequence` — identyfikację sesji oraz kolejność próbki,
+- `sampleStartedAt` — czas rozpoczęcia próbki,
+- podstawowe metadane środowiska: przeglądarkę, platformę, język, strefę czasową, ekran i obsługę dotyku,
+- `raw.keyOccurrences` — każde wystąpienie klawisza z kodem, kategorią, czasami względnymi, dwell i flagą poprawki,
+- `raw.transitions` — każde sąsiednie przejście z indeksami wystąpień oraz czasami keydown-keydown, keyup-keydown i keyup-keyup.
+
+Czasy są względne wobec początku próbki. Pozwala to ponownie wyprowadzać cechy, grupować je według klawiszy i digrafów, analizować kolejność, nakładanie, pauzy oraz tworzyć alternatywne wektory bez ponownego zbierania danych.
+
+Sekwencja kodów klawiszy jest daną potencjalnie wrażliwą, ponieważ może umożliwiać częściowe odtworzenie wpisywanego tekstu. Należy uwzględnić ten fakt w informacji i zgodzie uczestnika, ograniczyć dostęp do bazy oraz nie publikować surowych sekwencji w udostępnianym zbiorze.

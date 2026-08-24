@@ -5,7 +5,7 @@ const researchController = require("./research.controller");
 
 exports.trainingData = async (req, res) => {
   try {
-    const { userId } = req.body;
+    const userId = req.userId;
 
     if (!userId) {
       return res.status(400).send({ error: "Brak userId!" });
@@ -25,6 +25,7 @@ exports.trainingData = async (req, res) => {
 
     const newEntry = new TrainingData({
       ...req.body,
+      userId,
       sampleType,
       actorType,
       profileVersion: config.profileVersion,

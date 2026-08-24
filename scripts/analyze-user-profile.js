@@ -12,12 +12,20 @@ const SAFE_BASE_FEATURES = [
   "keysPerMinute", "charsPerMinute", "wordsPerMinute"
 ];
 
+const COLLECTOR_V2_FEATURES = [
+  "releasePress.mean", "releasePress.median", "releasePress.stdDev",
+  "releaseRelease.mean", "releaseRelease.median", "releaseRelease.stdDev",
+  "overlapRate"
+];
+
 const STD_FLOORS = {
   "dwell.mean": 15, "dwell.median": 15, "dwell.stdDev": 10,
   "flight.mean": 50, "flight.median": 50, "flight.stdDev": 100,
+  "releasePress.mean": 50, "releasePress.median": 50, "releasePress.stdDev": 100,
+  "releaseRelease.mean": 50, "releaseRelease.median": 50, "releaseRelease.stdDev": 100,
   "pause.mean": 500, "pause.median": 500, "pause.stdDev": 500,
   "burst.mean": 2, "burst.median": 2, "burst.stdDev": 1,
-  correctionRate: 0.03, longPauseRate: 0.02,
+  correctionRate: 0.03, overlapRate: 0.03, longPauseRate: 0.02,
   keysPerMinute: 25, charsPerMinute: 25, wordsPerMinute: 10
 };
 
@@ -82,10 +90,11 @@ function featureValue(sample, featureName) {
     const [, key, field] = featureName.split(".");
     return digraphMetric(sample, key, field);
   }
-  const metric = featureName.match(/^(dwell|flight|pause|burst)\.(mean|median|stdDev)$/);
+  const metric = featureName.match(/^(dwell|flight|releasePress|releaseRelease|pause|burst)\.(mean|median|stdDev)$/);
   if (metric) return Number(sample[metric[1]]?.[metric[2]]) || 0;
   const scalars = {
     correctionRate: sample.keyCount ? sample.correctionCount / sample.keyCount : 0,
+    overlapRate: sample.keyCount ? sample.overlapCount / sample.keyCount : 0,
     longPauseRate: sample.keyCount ? sample.longPauseCount / sample.keyCount : 0,
     keysPerMinute: durationMinutes ? sample.keyCount / durationMinutes : 0,
     charsPerMinute: durationMinutes ? sample.textLength / durationMinutes : 0,
@@ -135,8 +144,10 @@ async function main() {
   const validation = selected.slice(requestedTrain, requestedTrain + requestedValidation);
   const test = selected.slice(requestedTrain + requestedValidation);
   const digraphs = selectDigraphs(training, digraphLimit);
+  const hasOnlyCollectorV2Samples = selected.every((sample) => sample.collectorVersion >= 2);
   const featureNames = [
     ...SAFE_BASE_FEATURES,
+    ...(hasOnlyCollectorV2Samples ? COLLECTOR_V2_FEATURES : []),
     ...digraphs.flatMap((key) => [`digraph.${key}.mean`, `digraph.${key}.stdDev`])
   ];
   const trainingVectors = training.map((sample) => vector(sample, featureNames));
@@ -162,7 +173,10 @@ async function main() {
     username,
     warning: "To test właściciela z jednej sesji, a nie pełna ocena dokładności biometrycznej.",
     split: { training: training.length, validation: validation.length, test: test.length },
-    excludedHistoricalFeatures: ["releasePress", "releaseRelease", "overlapRate"],
+    collectorVersions: [...new Set(selected.map((sample) => sample.collectorVersion || 1))],
+    excludedHistoricalFeatures: hasOnlyCollectorV2Samples
+      ? []
+      : ["releasePress", "releaseRelease", "overlapRate"],
     featureCount: featureNames.length,
     selectedDigraphs: digraphs,
     validationDistances: validationDistances.map((value) => Number(value.toFixed(4))),

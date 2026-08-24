@@ -36,10 +36,10 @@ app.use((req, res, next) => {
 });
 
 // parse requests of content-type - application/json
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
 // parse requests of content-type - application/x-www-form-urlencoded
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 app.use(
   cookieSession({
