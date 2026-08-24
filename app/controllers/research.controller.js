@@ -8,9 +8,12 @@ const DEFAULT_CONFIG = {
   mode: "enrollment",
   profileUpdatesEnabled: true,
   profileFrozen: false,
+  collectionOnly: true,
+  registrationEnabled: true,
+  configVersion: 2,
   targetEnrollmentSamples: 100,
   validationFraction: 0.2,
-  sampleKeyThreshold: 500,
+  sampleKeyThreshold: 250,
   verificationKeyThreshold: 250,
   longPauseThresholdMs: 2000,
   maxDigraphFeatures: 20,
@@ -26,6 +29,18 @@ async function getGlobalConfig() {
   );
 
   let changed = false;
+  // Migrate configurations created before the collection-only study design.
+  if (!config.configVersion || config.configVersion < 2) {
+    config.mode = "enrollment";
+    config.profileFrozen = false;
+    config.profileUpdatesEnabled = true;
+    config.collectionOnly = true;
+    config.targetEnrollmentSamples = 100;
+    config.sampleKeyThreshold = 250;
+    config.configVersion = 2;
+    config.frozenAt = null;
+    changed = true;
+  }
   Object.entries(DEFAULT_CONFIG).forEach(([key, value]) => {
     if (config[key] === undefined) {
       config[key] = value;
@@ -53,19 +68,23 @@ exports.getConfig = async (req, res) => {
 
 exports.getRuntimeConfig = async (req, res) => {
   try {
-    const [config, user] = await Promise.all([
-      getGlobalConfig(),
-      User.findById(req.userId, "typingProfile modelData")
-    ]);
-    const profileReady = !!(
-      user?.typingProfile?.frozen &&
-      user?.typingProfile?.sampleCount &&
-      user?.modelData?.modelTopology
-    );
+    const config = await getGlobalConfig();
+    const enrollmentCount = await TrainingData.countDocuments({
+      userId: req.userId,
+      sampleType: "enrollment",
+      profileVersion: config.profileVersion
+    });
+    const target = config.targetEnrollmentSamples;
     res.status(200).json({
-      mode: profileReady ? "verification" : "enrollment",
-      profileFrozen: profileReady,
-      targetEnrollmentSamples: config.targetEnrollmentSamples,
+      mode: "enrollment",
+      profileFrozen: false,
+      collectionOnly: true,
+      targetEnrollmentSamples: target,
+      enrollmentCount,
+      remainingEnrollmentSamples: Math.max(target - enrollmentCount, 0),
+      enrollmentProgressPercent: Math.min(Math.round((enrollmentCount / target) * 100), 100),
+      extraEnrollmentSamples: Math.max(enrollmentCount - target, 0),
+      targetReached: enrollmentCount >= target,
       validationFraction: config.validationFraction,
       sampleKeyThreshold: config.sampleKeyThreshold,
       verificationKeyThreshold: config.verificationKeyThreshold,
@@ -82,6 +101,7 @@ exports.updateConfig = async (req, res) => {
   try {
     const allowedFields = [
       "profileUpdatesEnabled",
+      "registrationEnabled",
       "targetEnrollmentSamples",
       "validationFraction",
       "sampleKeyThreshold",
@@ -121,6 +141,9 @@ exports.updateConfig = async (req, res) => {
 
 async function freezeProfileForUser(userId) {
   const config = await getGlobalConfig();
+  if (config.collectionOnly) {
+    throw new Error("Badanie dziala w trybie wylacznego zbierania danych");
+  }
   const user = await User.findById(userId);
   if (!user) throw new Error("Uzytkownik nie znaleziony");
   if (!user.modelData?.modelTopology || user.modelData.profileVersion !== config.profileVersion) {

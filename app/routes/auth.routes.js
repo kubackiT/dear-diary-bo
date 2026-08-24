@@ -13,11 +13,14 @@ module.exports = function(app) {
   app.post(
     "/api/auth/signup",
     [
+      controller.checkRegistrationEnabled,
       verifySignUp.checkDuplicateUsernameOrEmail,
       verifySignUp.checkRolesExisted
     ],
     controller.signup
   );
+
+  app.get("/api/auth/registration-status", controller.getRegistrationStatus);
 
   app.post("/api/auth/signin", controller.signin);
 

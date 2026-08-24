@@ -6,17 +6,17 @@ Aplikacja Dear Diary jest aplikacją dziennika/notatnika, która pełni rolę ś
 
 Badanie nie polega na analizie treści notatek. Istotne są wyłącznie cechy czasowe i behawioralne związane z obsługą klawiatury, np. czas przytrzymania klawiszy, czas przejścia między klawiszami, pauzy, poprawki oraz rytm wpisywania par klawiszy.
 
-## 2. Główne fazy działania
+## 2. Tryb działania
 
-Moduł badawczy działa w dwóch głównych trybach:
+Moduł badawczy działa wyłącznie w trybie zbierania danych. Trenowanie i ocena modeli odbywają się później, poza aplikacją, na wyeksportowanym zbiorze.
 
 ### Enrollment
 
 Tryb `Enrollment` służy do budowania profilu użytkownika. Użytkownik pisze naturalnie w aplikacji, a system zbiera próbki dynamiki pisania. Po osiągnięciu ustawionego progu liczby naciśnięć klawiszy próbka jest zapisywana w bazie jako dane profilujące.
 
-Domyślnie pojedyncza próbka enrollment jest tworzona po zarejestrowaniu 500 zakończonych naciśnięć klawiszy. System zbiera 100 takich próbek. Po zapisaniu próbki docelowej model jest trenowany jeden raz, a po powodzeniu profil zostaje automatycznie zamrożony i system przechodzi do fazy verification.
+Pojedyncza próbka enrollment jest tworzona po zarejestrowaniu 250 zakończonych naciśnięć klawiszy. Cel motywacyjny wynosi 100 próbek, czyli około 25 000 naciśnięć. Osiągnięcie celu nie blokuje dalszego zbierania. Aplikacja nie trenuje wtedy modelu, nie zamraża profilu i nie przechodzi do fazy verification.
 
-### Verification
+### Verification (funkcjonalność nieaktywna w obecnym badaniu)
 
 Tryb `Verification` służy do testowania gotowego profilu. Nowe próbki nie aktualizują już profilu, tylko są porównywane z wcześniej utworzonym modelem użytkownika. Domyślnie każda próbka obejmuje 250 zakończonych naciśnięć. Po jej wysłaniu bufor pomiarowy jest zerowany, dlatego kolejne wyniki powstają z niezależnych, a nie kumulacyjnych fragmentów pisania. Wynikiem jest score zgodności oraz decyzja, czy próbka pasuje do profilu.
 
@@ -343,7 +343,7 @@ Domyślna liczba próbek wymagana do rozpoczęcia trenowania jest określana prz
 Target enrollment samples
 ```
 
-Domyślna wartość wynosi 100. Backend przyjmuje próbki wyłącznie z aktualnego `profileVersion` i zatrzymuje ich zbieranie po osiągnięciu celu. Model nie jest aktualizowany po każdej próbce — trenowanie zostaje uruchomione jeden raz, dokładnie po zapisaniu próbki docelowej.
+Domyślna wartość wynosi 100. Backend przyjmuje próbki z aktualnego `profileVersion` również po osiągnięciu celu. Cel służy do prezentacji postępu, a trenowanie nie jest uruchamiane przez aplikację.
 
 Próbki są uporządkowane chronologicznie i dzielone zgodnie z ustawieniem `validationFraction`, którego domyślna wartość wynosi `0.2`:
 
@@ -580,11 +580,15 @@ Panel admina umożliwia kontrolę nad procesem badawczym.
 
 ### 10.1. Stan eksperymentu
 
-Panel pokazuje aktualny tryb (`enrollment` albo `verification`) oraz informację, czy profil jest zbierany, czy zamrożony. Zmiana fazy po poprawnym trenowaniu odbywa się automatycznie.
+Panel pokazuje tryb `enrollment` oraz liczbę zebranych próbek. W obecnym badaniu nie następuje automatyczna zmiana fazy.
 
 ### 10.2. Target enrollment samples
 
-Docelowa liczba próbek wymagana do jednorazowego trenowania profilu. Domyślna wartość wynosi 100.
+Motywacyjny cel liczby zebranych próbek. Domyślna wartość wynosi 100; próbki ponad cel również są zapisywane.
+
+### 10.2.1. Registration enabled
+
+Przełącznik dostępny administratorowi, który tymczasowo włącza lub wyłącza możliwość zakładania nowych kont. Wyłączenie jest egzekwowane przez backend; nie wpływa na logowanie ani pracę istniejących użytkowników.
 
 ### 10.3. Validation fraction
 
@@ -592,7 +596,7 @@ Część próbek odkładana do wyznaczenia progów. Domyślna wartość `0.2` oz
 
 ### 10.4. Enrollment key threshold
 
-Liczba zakończonych naciśnięć potrzebna do utworzenia jednej próbki enrollment. Domyślna wartość wynosi 500, a panel nie pozwala ustawić mniej niż 250.
+Liczba zakończonych naciśnięć potrzebna do utworzenia jednej próbki enrollment. Domyślna wartość wynosi 250.
 
 ### 10.5. Verification key threshold
 
@@ -631,14 +635,13 @@ Rozpoczyna badanie wybranego użytkownika od początku: zwiększa `profileVersio
 
 ## 11. Sugerowany przebieg badania
 
-1. Utworzyć konto testowe użytkownika.
+1. Utworzyć konto użytkownika.
 2. Upewnić się, że system znajduje się w fazie `Enrollment`.
-3. Użytkownik pisze naturalnie w aplikacji, aż zostanie zebranych 100 próbek.
-4. Po próbce docelowej poczekać na jednorazowe trenowanie i automatyczne zamrożenie profilu.
-5. Zebrać niezależne próbki verification pisane przez właściciela profilu (`Owner`).
-6. Zebrać próbki verification pisane przez inną osobę (`Impostor`).
-7. Wyeksportować dane z MongoDB.
-8. Porównać wyniki TensorFlow i baseline statystycznego.
+3. Użytkownik pisze naturalnie w aplikacji; pasek pokazuje postęp do celu 100 próbek.
+4. Jeśli użytkownik nie osiągnie celu, zachować zebrane próbki i uwzględnić je zgodnie z później przyjętym minimum analitycznym.
+5. Po osiągnięciu celu pozwolić użytkownikowi nadal zbierać próbki.
+6. Wyeksportować dane z MongoDB.
+7. Trenować i porównywać modele offline dla różnych liczebności próbek.
 
 ## 12. Możliwe wyniki do przedstawienia w pracy
 
@@ -660,6 +663,6 @@ Zwykły użytkownik nie widzi score podczas pisania. Ma to ograniczyć wpływ in
 
 Treść notatek nie jest analizowana przez model. Model wykorzystuje cechy czasowe i behawioralne.
 
-Etap enrollment jest oddzielony od etapu verification. Profil zostaje automatycznie zamrożony dopiero po wytrenowaniu obu modeli na ustalonym zbiorze, dzięki czemu próbki testowe nie aktualizują parametrów profilu.
+Aplikacja pozostaje w trybie enrollment przez całe badanie. Zebrane dane nie powodują automatycznego trenowania ani zamrożenia profilu; podział danych i ocena modeli są wykonywane później offline.
 
 Dane impostor powinny być zbierane na kontach testowych lub w kontrolowanych warunkach, bez udostępniania prywatnych danych użytkownika.

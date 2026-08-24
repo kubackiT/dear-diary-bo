@@ -8,7 +8,7 @@ verifyToken = (req, res, next) => {
   let token = req.session.token;
 
   if (!token) {
-    return res.status(403).send({ message: "No token provided!" });
+    return res.status(403).send({ message: "Brak tokenu uwierzytelniającego." });
   }
 
   jwt.verify(token,
@@ -16,7 +16,7 @@ verifyToken = (req, res, next) => {
             (err, decoded) => {
               if (err) {
                 return res.status(401).send({
-                  message: "Unauthorized!",
+                  message: "Brak autoryzacji.",
                 });
               }
               req.userId = decoded.id;
@@ -48,7 +48,7 @@ isAdmin = (req, res, next) => {
           }
         }
 
-        res.status(403).send({ message: "Require Admin Role!" });
+        res.status(403).send({ message: "Ta operacja wymaga uprawnień administratora." });
         return;
       }
     );

@@ -384,6 +384,13 @@ function buildProfile(trainingSamples, validationSamples, config) {
 
 async function trainUserProfile(userId) {
   const config = await researchController.getGlobalConfig();
+  if (config.collectionOnly) {
+    return {
+      ready: false,
+      collectionOnly: true,
+      message: "Badanie dziala w trybie wylacznego zbierania danych; model nie zostal wytrenowany."
+    };
+  }
   const existingUser = await User.findById(userId);
   if (!existingUser) throw new Error("Uzytkownik nie znaleziony");
   if (existingUser.modelData?.modelTopology && existingUser.modelData.profileVersion === config.profileVersion) {

@@ -14,7 +14,7 @@ exports.addNewNote = (req, res) => {
       return;
     }
     if(note){
-      res.status(200).send({ message: 'Note has been saved' });
+      res.status(200).send({ message: 'Notatka została zapisana.' });
       return;
     }
   });
@@ -54,7 +54,7 @@ exports.editNote = (req, res) => {
       return;
     }
 
-    res.status(200).send({ message: 'Note has been saved' });
+    res.status(200).send({ message: 'Notatka została zapisana.' });
   });
 };
 
@@ -66,7 +66,6 @@ exports.deleteNote = (req, res) => {
       return;
     }
 
-    res.status(200).send({ message: 'Note has been deleted' });
+    res.status(200).send({ message: 'Notatka została usunięta.' });
   });
 };
-
