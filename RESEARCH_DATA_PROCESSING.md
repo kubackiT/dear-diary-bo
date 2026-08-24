@@ -666,3 +666,21 @@ Treść notatek nie jest analizowana przez model. Model wykorzystuje cechy czaso
 Aplikacja pozostaje w trybie enrollment przez całe badanie. Zebrane dane nie powodują automatycznego trenowania ani zamrożenia profilu; podział danych i ocena modeli są wykonywane później offline.
 
 Dane impostor powinny być zbierane na kontach testowych lub w kontrolowanych warunkach, bez udostępniania prywatnych danych użytkownika.
+
+## 14. Analiza offline pojedynczego użytkownika
+
+Skrypt `scripts/analyze-user-profile.js` wykonuje chronologiczny podział próbek, dopasowuje statystyczny profil na części treningowej, wybiera próg na walidacji i oblicza FRR na teście właściciela. Nie modyfikuje bazy danych.
+
+Przykład dla 20 próbek:
+
+```text
+npm run study:analyze:user -- --username=admin --train=12 --validation=4 --test=4
+```
+
+Przykład dla 100 próbek:
+
+```text
+npm run study:analyze:user -- --username=user01 --train=60 --validation=20 --test=20
+```
+
+Bez próbek innych użytkowników wynik nie jest pełną accuracy. Pozwala obliczyć jedynie akceptację próbek właściciela i FRR. FAR, EER, ROC-AUC oraz balanced accuracy wymagają negatywnych próbek testowych.

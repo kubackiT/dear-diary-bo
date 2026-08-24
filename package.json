@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "study:analyze:user": "node scripts/analyze-user-profile.js",
     "study:reset:preview": "node scripts/reset-study-data.js",
     "study:reset": "node scripts/reset-study-data.js --execute"
   },
