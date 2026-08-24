@@ -693,7 +693,7 @@ Próbki kolektora w wersji `2` zawierają dodatkowo:
 - `sessionId` i `sampleSequence` — identyfikację sesji oraz kolejność próbki,
 - `sampleStartedAt` — czas rozpoczęcia próbki,
 - podstawowe metadane środowiska: przeglądarkę, platformę, język, strefę czasową, ekran i obsługę dotyku,
-- `raw.keyOccurrences` — każde wystąpienie klawisza z kodem, kategorią, czasami względnymi, dwell i flagą poprawki,
+- `raw.keyOccurrences` — każde wystąpienie klawisza z kodem, kategorią, czasami względnymi, dwell, lokalizacją, flagą poprawki oraz stanem `Alt`, `AltGr`, `Ctrl`, `Shift` i `Meta`,
 - `raw.transitions` — każde sąsiednie przejście z indeksami wystąpień oraz czasami keydown-keydown, keyup-keydown i keyup-keyup.
 
 Czasy są względne wobec początku próbki. Pozwala to ponownie wyprowadzać cechy, grupować je według klawiszy i digrafów, analizować kolejność, nakładanie, pauzy oraz tworzyć alternatywne wektory bez ponownego zbierania danych.

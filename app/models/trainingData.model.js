@@ -19,7 +19,15 @@ const KeyOccurrenceSchema = new mongoose.Schema({
   keydownOffsetMs: { type: Number, required: true },
   keyupOffsetMs: { type: Number, default: null },
   dwellMs: { type: Number, default: null },
-  isCorrection: { type: Boolean, default: false }
+  isCorrection: { type: Boolean, default: false },
+  location: { type: Number, default: 0 },
+  modifiers: {
+    alt: { type: Boolean, default: false },
+    altGraph: { type: Boolean, default: false },
+    ctrl: { type: Boolean, default: false },
+    shift: { type: Boolean, default: false },
+    meta: { type: Boolean, default: false }
+  }
 }, { _id: false });
 
 const KeyTransitionSchema = new mongoose.Schema({
