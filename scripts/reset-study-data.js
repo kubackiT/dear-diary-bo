@@ -4,6 +4,7 @@ const db = require("../app/models");
 const dbConfig = require("../app/config/db.config");
 
 const execute = process.argv.includes("--execute");
+const preservedAdminUsername = "admin";
 
 async function main() {
   await db.mongoose.connect(
@@ -17,11 +18,11 @@ async function main() {
   }
 
   const admins = await db.user.find(
-    { roles: adminRole._id },
+    { username: preservedAdminUsername, roles: adminRole._id },
     "_id username email"
   );
   if (admins.length === 0) {
-    throw new Error("Nie znaleziono konta administratora. Przerwano bez wprowadzania zmian.");
+    throw new Error(`Nie znaleziono konta administratora '${preservedAdminUsername}'. Przerwano bez wprowadzania zmian.`);
   }
 
   const [userCount, sampleCount, noteCount] = await Promise.all([
