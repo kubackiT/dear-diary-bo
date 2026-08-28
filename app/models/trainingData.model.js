@@ -41,9 +41,7 @@ const KeyTransitionSchema = new mongoose.Schema({
   isLongPause: { type: Boolean, default: false }
 }, { _id: false });
 
-const TrainingDataSchema = mongoose.model(
-  "TrainingData",
-  new mongoose.Schema({
+const trainingDataSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     collectorVersion: { type: Number, default: 1 },
     sessionId: { type: String, default: null },
@@ -112,7 +110,20 @@ const TrainingDataSchema = mongoose.model(
       statisticalMatch: { type: Boolean, default: null }
     },
     timestamp: { type: Date, default: Date.now }
-  })
+  });
+
+trainingDataSchema.index(
+  { userId: 1, sessionId: 1, sampleSequence: 1, sampleType: 1, profileVersion: 1 },
+  {
+    unique: true,
+    name: "unique_typing_sample",
+    partialFilterExpression: {
+      sessionId: { $type: "string" },
+      sampleSequence: { $type: "number" }
+    }
+  }
 );
+
+const TrainingDataSchema = mongoose.model("TrainingData", trainingDataSchema);
 
 module.exports = TrainingDataSchema;

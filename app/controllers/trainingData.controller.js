@@ -23,15 +23,42 @@ exports.trainingData = async (req, res) => {
 
     const enrollmentFilter = { userId, sampleType: "enrollment", profileVersion: config.profileVersion };
 
-    const newEntry = new TrainingData({
+    const entryData = {
       ...req.body,
       userId,
       sampleType,
       actorType,
       profileVersion: config.profileVersion,
       profileFrozen: false
-    });
-    await newEntry.save();
+    };
+
+    let newEntry;
+    if (entryData.sessionId && Number.isFinite(entryData.sampleSequence)) {
+      const sampleIdentity = {
+        userId,
+        sessionId: entryData.sessionId,
+        sampleSequence: entryData.sampleSequence,
+        sampleType,
+        profileVersion: config.profileVersion
+      };
+      try {
+        newEntry = await TrainingData.findOneAndUpdate(
+          sampleIdentity,
+          { $setOnInsert: entryData },
+          { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+        );
+      } catch (error) {
+        if (error?.code !== 11000) {
+          throw error;
+        }
+        newEntry = await TrainingData.findOne(sampleIdentity);
+        if (!newEntry) {
+          throw error;
+        }
+      }
+    } else {
+      newEntry = await new TrainingData(entryData).save();
+    }
 
     const enrollmentCount = await TrainingData.countDocuments(enrollmentFilter);
     const target = config.targetEnrollmentSamples;
