@@ -73,6 +73,15 @@ exports.trainingData = async (req, res) => {
       targetReached: enrollmentCount >= target
     });
   } catch (error) {
+    console.error("Blad zapisu probki treningowej:", {
+      userId: req.userId || null,
+      sessionId: req.body?.sessionId || null,
+      sampleSequence: req.body?.sampleSequence ?? null,
+      errorName: error?.name || null,
+      errorCode: error?.code || null,
+      errorMessage: error?.message || String(error),
+      stack: error?.stack || null
+    });
     res.status(500).send({ error: "Blad zapisu" });
   }
 };
